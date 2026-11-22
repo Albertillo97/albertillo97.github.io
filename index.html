@@ -1,72 +1,1062 @@
 <!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Álbum de Cromos AR</title>
-    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-    <style>
-      body { margin: 0; overflow: hidden; font-family: sans-serif; }
-      #start-overlay {
-        position: fixed; inset: 0; background: rgba(0,0,0,0.8);
-        color: white; display: flex; flex-direction: column;
-        align-items: center; justify-content: center; z-index: 999;
-        text-align: center; padding: 20px;
-      }
-      button {
-        padding: 14px 28px; font-size: 18px; border-radius: 30px;
-        border: none; background: #ff4d6d; color: white; cursor: pointer;
-      }
-    </style>
-  </head>
-  <body>
-    <!-- Pantalla inicial obligatoria para que iOS/Android permitan reproducir vídeo con sonido -->
-    <div id="start-overlay">
-      <h2>Apunta con la cámara a un cromo</h2>
-      <button id="start-btn">Empezar</button>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101a3a">
+<meta name="robots" content="noindex">
+<title>Álbum de cromos · Realidad aumentada</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='18' y='6' width='64' height='88' rx='10' fill='%23e0a526'/%3E%3Crect x='26' y='14' width='48' height='56' rx='5' fill='%23101a3a'/%3E%3C/svg%3E">
+
+<style>
+  /* ---------- Paleta (claro / oscuro) ---------- */
+  :root {
+    --bg: #eef1f8;
+    --card: #ffffff;
+    --ink: #101a3a;
+    --muted: #4d577a;
+    --line: #cfd6ea;
+    --foil-a: #e0a526;
+    --foil-b: #3fb6b0;
+    --foil-c: #d9485b;
+    --btn-bg: #101a3a;
+    --btn-fg: #ffffff;
+    --warn-bg: #fff3d6;
+    --warn-fg: #5c4100;
+    --err-bg: #fde4e7;
+    --err-fg: #6b1523;
+    --hud-bg: rgba(10, 15, 36, .74);
+    --hud-fg: #ffffff;
+    --font-display: "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Arial, sans-serif;
+    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b1024;
+      --card: #151c3b;
+      --ink: #eef1fb;
+      --muted: #a7b0d1;
+      --line: #2a3563;
+      --btn-bg: #e0a526;
+      --btn-fg: #101a3a;
+      --warn-bg: #3a2d08;
+      --warn-fg: #ffe3a1;
+      --err-bg: #3b1119;
+      --err-fg: #ffd3d9;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b1024;
+    --card: #151c3b;
+    --ink: #eef1fb;
+    --muted: #a7b0d1;
+    --line: #2a3563;
+    --btn-bg: #e0a526;
+    --btn-fg: #101a3a;
+    --warn-bg: #3a2d08;
+    --warn-fg: #ffe3a1;
+    --err-bg: #3b1119;
+    --err-fg: #ffd3d9;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    overflow: hidden;
+  }
+
+  /* ---------- Botones ---------- */
+  .btn {
+    appearance: none;
+    border: 0;
+    border-radius: 14px;
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    font: 700 1.05rem/1 var(--font-body);
+    padding: 1rem 1.4rem;
+    min-height: 3.25rem;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+  }
+  .btn:disabled { opacity: .55; cursor: progress; }
+  .btn:focus-visible, .chip:focus-visible { outline: 3px solid var(--foil-b); outline-offset: 3px; }
+  .btn.small { font-size: .95rem; min-height: 2.75rem; padding: .7rem 1.1rem; }
+  .btn.ghost {
+    background: var(--hud-bg);
+    color: var(--hud-fg);
+    border: 1px solid rgba(255, 255, 255, .25);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+
+  /* ---------- Pantallas (inicio y error) ---------- */
+  .screen {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(1.25rem + env(safe-area-inset-top, 0px)) 1.25rem calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    background: var(--bg);
+  }
+
+  /* El cromo de la portada: el único elemento llamativo de la página */
+  .sticker {
+    position: relative;
+    width: min(100%, 25rem);
+    border-radius: 26px;
+    padding: 3px;
+    background: conic-gradient(from 210deg, var(--foil-a), var(--foil-b), var(--foil-c), var(--foil-a));
+    box-shadow: 0 18px 40px -18px rgba(16, 26, 58, .55);
+    overflow: hidden;
+  }
+  .sticker::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .55) 50%, transparent 65%);
+    transform: translateX(-120%);
+    animation: sheen 1.6s .4s ease-out 1 forwards;
+    pointer-events: none;
+  }
+  @keyframes sheen { to { transform: translateX(120%); } }
+  .sticker-inner {
+    background: var(--card);
+    border-radius: 23px;
+    padding: 1.75rem 1.5rem 1.5rem;
+  }
+  .sticker h1 {
+    margin: 0 0 .5rem;
+    font: 800 clamp(2.1rem, 9vw, 2.8rem)/1.02 var(--font-display);
+    letter-spacing: -.01em;
+  }
+  .sticker .lead { margin: 0 0 1.25rem; color: var(--muted); max-width: 34ch; }
+  .steps { margin: 0 0 1.5rem; padding: 0; list-style: none; counter-reset: paso; display: grid; gap: .75rem; }
+  .steps li { counter-increment: paso; display: grid; grid-template-columns: 2rem 1fr; gap: .75rem; align-items: start; }
+  .steps li::before {
+    content: counter(paso);
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    border: 2px solid var(--foil-a);
+    font: 800 1rem/1 var(--font-display);
+  }
+  .sticker .btn { width: 100%; }
+  .note { margin: .9rem 0 0; font-size: .875rem; color: var(--muted); }
+  .alert { margin: 1rem 0 0; padding: .75rem .9rem; border-radius: 12px; font-size: .9rem; }
+  .alert.warn { background: var(--warn-bg); color: var(--warn-fg); }
+  .alert.err { background: var(--err-bg); color: var(--err-fg); }
+
+  .fatal-box { width: min(100%, 25rem); }
+  .fatal-box h2 { margin: 0 0 .5rem; font: 800 1.7rem/1.1 var(--font-display); }
+  .fatal-box p { margin: 0 0 1rem; color: var(--muted); }
+  .fatal-box small { display: block; margin: 0 0 1.25rem; color: var(--muted); word-break: break-word; }
+
+  /* ---------- Escena AR ---------- */
+  #stage { position: fixed; inset: 0; z-index: 1; overflow: hidden; background: #000; }
+  #arVideo { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; left: 0; top: 0; }
+
+  /* ---------- HUD sobre la cámara ---------- */
+  #hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; color: var(--hud-fg); font-family: var(--font-body); }
+  #hud button, #hud a { pointer-events: auto; }
+  .hud-top {
+    position: absolute; left: 0; right: 0; top: 0;
+    display: flex; gap: .6rem; align-items: center; justify-content: space-between;
+    padding: calc(.75rem + env(safe-area-inset-top, 0px)) .9rem 0;
+  }
+  .chip {
+    appearance: none; border: 1px solid rgba(255, 255, 255, .22);
+    background: var(--hud-bg); color: var(--hud-fg);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    border-radius: 999px; padding: .5rem .95rem; font: 600 .9rem/1.2 var(--font-body);
+  }
+  button.chip { cursor: pointer; min-width: 2.75rem; min-height: 2.75rem; }
+  #status { flex: 1 1 auto; text-align: center; max-width: 100%; }
+  .hud-bottom {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: grid; gap: .7rem; justify-items: center;
+    padding: 0 .9rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
+  .actions { display: flex; gap: .6rem; flex-wrap: wrap; justify-content: center; }
+  .card-info {
+    width: min(100%, 26rem);
+    background: var(--hud-bg);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 18px; padding: .9rem 1.1rem;
+    display: grid; gap: .25rem; justify-items: start;
+  }
+  .card-info h2 { margin: 0; font: 800 1.35rem/1.1 var(--font-display); }
+  .card-info p { margin: 0; font-size: .95rem; opacity: .9; }
+  .card-info .btn { margin-top: .5rem; }
+
+  .reticle { position: absolute; left: 50%; top: 46%; width: min(64vw, 18rem); aspect-ratio: 3 / 4; transform: translate(-50%, -50%); }
+  .reticle i { position: absolute; width: 2.2rem; height: 2.2rem; border: 4px solid #fff; opacity: .9; }
+  .reticle i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 14px; }
+  .reticle i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 14px; }
+  .reticle i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 14px; }
+  .reticle i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 14px; }
+  .reticle { animation: breathe 2.4s ease-in-out infinite; }
+  @keyframes breathe { 50% { transform: translate(-50%, -50%) scale(.96); } }
+
+  .spinner {
+    position: absolute; left: 50%; top: 46%; width: 3rem; height: 3rem; margin: -1.5rem 0 0 -1.5rem;
+    border-radius: 50%; border: 4px solid rgba(255, 255, 255, .3); border-top-color: #fff;
+    animation: spin .9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sticker::after, .reticle, .spinner { animation: none; }
+    .sticker::after { display: none; }
+    .spinner { border-top-color: rgba(255, 255, 255, .3); }
+  }
+</style>
+</head>
+
+<body>
+
+<!-- ================= Pantalla de inicio ================= -->
+<main id="landing" class="screen">
+  <div class="sticker">
+    <div class="sticker-inner">
+      <h1 id="ui-title"></h1>
+      <p id="ui-subtitle" class="lead"></p>
+      <ol id="ui-steps" class="steps"></ol>
+      <button id="btn-start" class="btn" type="button" disabled></button>
+      <p id="ui-note" class="note"></p>
+      <p id="ui-warn" class="alert warn" role="status" hidden></p>
+      <p id="ui-err" class="alert err" role="alert" hidden></p>
     </div>
+  </div>
+</main>
 
-    <a-scene
-      mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
-      color-space="sRGB"
-      renderer="colorManagement: true, physicallyCorrectLights"
-      vr-mode-ui="enabled: false"
-      device-orientation-permission-ui="enabled: false">
+<!-- ================= Pantalla de error ================= -->
+<section id="fatal" class="screen" role="alertdialog" aria-labelledby="fatal-title" hidden>
+  <div class="fatal-box">
+    <h2 id="fatal-title"></h2>
+    <p id="fatal-msg"></p>
+    <small id="fatal-detail"></small>
+    <button id="btn-retry" class="btn" type="button"></button>
+  </div>
+</section>
 
-      <a-assets>
-        <video id="cromo-video-1" src="./cromo-video-1.mp4" preload="auto" loop="true" playsinline webkit-playsinline crossorigin="anonymous"></video>
-      </a-assets>
+<!-- ================= Escena AR (se crea al pulsar “Empezar”) ================= -->
+<div id="stage" hidden></div>
 
-      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+<!-- Un único reproductor compartido por todos los cromos de vídeo -->
+<video id="arVideo" playsinline webkit-playsinline preload="auto" crossorigin="anonymous"></video>
 
-      <!-- Cromo 0 (el primero de tu targets.mind) -->
-      <a-entity id="target-0" mindar-image-target="targetIndex: 0">
-        <!-- Ajusta height según la proporción de tu foto (ej. 0.75 para 4:3, 1.33 para vertical) -->
-        <a-video src="#cromo-video-1" position="0 0 0" width="1" height="0.75"></a-video>
-      </a-entity>
-    </a-scene>
+<!-- ================= Interfaz sobre la cámara ================= -->
+<div id="hud" hidden>
+  <div class="hud-top">
+    <button id="btn-exit" class="chip" type="button"></button>
+    <div id="status" class="chip" role="status" aria-live="polite" hidden></div>
+  </div>
+  <div id="reticle" class="reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div id="spinner" class="spinner" role="progressbar" aria-label="Cargando" hidden></div>
+  <div class="hud-bottom">
+    <div class="actions">
+      <button id="btn-sound" class="btn small ghost" type="button" hidden></button>
+      <button id="btn-play" class="btn small ghost" type="button" hidden></button>
+    </div>
+    <section id="card-info" class="card-info" hidden>
+      <h2 id="card-name"></h2>
+      <p id="card-caption" hidden></p>
+      <a id="card-link" class="btn small" target="_blank" rel="noopener" hidden></a>
+    </section>
+  </div>
+</div>
 
-    <script>
-      const startBtn = document.getElementById('start-btn');
-      const overlay = document.getElementById('start-overlay');
-      const sceneEl = document.querySelector('a-scene');
-      const target0 = document.getElementById('target-0');
-      const video1 = document.getElementById('cromo-video-1');
+<noscript>
+  <div class="screen"><div class="fatal-box"><h2>Hace falta JavaScript</h2><p>Activa JavaScript en tu navegador para ver el álbum en realidad aumentada.</p></div></div>
+</noscript>
 
-      startBtn.addEventListener('click', () => {
-        overlay.style.display = 'none';
-        // Pre-activamos el vídeo tras el toque del usuario
-        video1.play().then(() => { video1.pause(); video1.currentTime = 0; });
-        sceneEl.systems['mindar-image-system'].start();
+
+<!-- =====================================================================
+     CONFIGURACIÓN  ·  Aquí es donde se edita todo el álbum
+     ---------------------------------------------------------------------
+     Cada elemento de "cards" es un cromo. El ORDEN de la lista debe ser
+     el mismo orden en el que subiste las fotos al compilador de MindAR
+     (el primero es el 0, el segundo el 1, etc.). Si algún día cambias el
+     orden de las fotos, indica "targetIndex" a mano en cada cromo.
+
+     Tipos de contenido disponibles:
+       "video"  → vídeo sobre la foto (.mp4 recomendado, H.264 + AAC)
+       "image"  → imagen encima de la foto (.png/.webp con transparencia)
+       "model"  → modelo 3D (.glb) con animación opcional
+
+     Opciones comunes de cada cromo (todas opcionales salvo id y src):
+       name      Título que se muestra al detectarlo
+       caption   Texto corto bajo el título
+       link      { url: "https://…", label: "Ver más" }   (enlace opcional)
+       scale     Tamaño respecto a la foto. 1 = el ancho de la foto
+       position  [x, y, z] desplazamiento respecto al centro de la foto
+       rotation  [x, y, z] giro en grados
+     Solo para vídeo:
+       loop      true = se repite sin parar
+       aspect    ancho/alto del vídeo (se detecta solo si no lo pones)
+       transparent  true si el vídeo tiene canal alfa (solo .webm en Chrome)
+     ===================================================================== -->
+<script>
+const CONFIG = {
+  // Súbelo (1 → 2 → 3…) cada vez que reemplaces un vídeo o el .mind,
+  // para que los móviles no usen la copia antigua guardada en caché.
+  appVersion: "1",
+
+  // Archivo generado con el compilador de MindAR (todas las fotos juntas)
+  targetsFile: "assets/targets.mind",
+
+  // Ajustes de seguimiento. Los valores por defecto funcionan bien.
+  tracking: {
+    maxTrack: 1,            // cuántos cromos a la vez (1 = uno cada vez)
+    warmupTolerance: 5,     // fotogramas seguidos para confirmar que ve la foto
+    missTolerance: 8,       // fotogramas seguidos para decidir que la perdió
+    filterMinCF: 0.001,     // suavizado del movimiento (más bajo = más suave)
+    filterBeta: 1000        // reacción rápida (más alto = menos retardo)
+  },
+
+  debug: false,             // true muestra mensajes técnicos en la consola
+
+  texts: {
+    title: "Álbum de cromos",
+    subtitle: "Cada foto del álbum guarda un recuerdo en vídeo.",
+    steps: [
+      "Pulsa “Empezar” y permite el acceso a la cámara.",
+      "Apunta al cromo que quieras ver.",
+      "Mantén el móvil firme y con el volumen subido."
+    ],
+    start: "Empezar",
+    loadingLibs: "Preparando…",
+    note: "Todo se ejecuta en tu móvil: no se graba ni se envía nada.",
+    exit: "Salir",
+    scanning: "Apunta la cámara a un cromo",
+    startingCamera: "Iniciando cámara…",
+    loadingVideo: "Cargando vídeo…",
+    enableSound: "Activar sonido",
+    play: "Reproducir",
+    replay: "Repetir",
+    retry: "Volver a intentarlo",
+    videoError: "No se pudo cargar el vídeo de este cromo.",
+    warnInApp: "Parece que has abierto el enlace dentro de otra app. Si la cámara no funciona, ábrelo en Safari o Chrome.",
+    errNoCameraApi: "Este navegador no permite usar la cámara en esta página. Ábrela con Safari o Chrome y comprueba que la dirección empieza por https.",
+    errLibs: "No se han podido cargar los componentes de realidad aumentada. Comprueba la conexión y recarga la página.",
+    errTargetsTitle: "Falta el archivo de reconocimiento",
+    errTargetsMsg: "No se encuentra el archivo de cromos. Genéralo con el compilador de MindAR y súbelo a la ruta indicada abajo.",
+    errCameraTitle: "No se pudo abrir la cámara",
+    errCameraMsg: "Permite el acceso a la cámara en los ajustes del navegador y vuelve a intentarlo. Si estás dentro de otra app, abre el enlace en Safari o Chrome.",
+    errConfigTitle: "Hay un error en la configuración"
+  },
+
+  cards: [
+    {
+      id: "cromo-01",
+      type: "video",
+      name: "Cromo 1",
+      caption: "Escribe aquí un texto breve sobre este recuerdo.",
+      src: "assets/videos/cromo-01.mp4",
+      loop: true
+    },
+    {
+      id: "cromo-02",
+      type: "image",
+      name: " ",
+      caption: " ",
+      src: "assets/img/cromo-02.png",
+      link: { url: "https://www.youtube.com/watch?v=MF8RFD7tk48", label: "Ver más" },
+    },
+    {
+      id: "cromo-03",
+      type: "model",
+      name: "Zorro de prueba",
+      src: "assets/models/Fox.glb",
+      scale: 0.1,
+      rotation: [90, 0, 0]
+    }
+
+    /* Ejemplos para el futuro (quita los comentarios para usarlos):
+
+    { id: "cromo-04", type: "image", name: "Sello", src: "assets/img/sello.png", scale: 0.6, position: [0, 0, 0.01] },
+    { id: "cromo-05", type: "model", name: "Trofeo", src: "assets/models/trofeo.glb", scale: 0.5, rotation: [90, 0, 0] }
+
+    */
+  ]
+};
+</script>
+
+
+<!-- =====================================================================
+     LÓGICA  ·  No hace falta tocar nada de aquí hacia abajo
+     ===================================================================== -->
+<script>
+(() => {
+  'use strict';
+
+  const T = CONFIG.texts;
+  const DEBUG = CONFIG.debug || /[?&]debug\b/.test(location.search);
+  const log = (...a) => { if (DEBUG) console.log('[AR]', ...a); };
+  const $ = (sel) => document.querySelector(sel);
+
+  /* WAV silencioso de 0,1 s. Sirve para “desbloquear” el reproductor de vídeo
+     en el toque del botón Empezar (iOS exige un gesto del usuario). */
+  const SILENT_WAV = 'data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
+
+  /* Bibliotecas: primero se intenta la copia local (carpeta libs/), que es la
+     más duradera. Si no existe, se usa la CDN con versión fijada. */
+  const LIBS = [
+    {
+      name: 'A-Frame',
+      local: 'libs/aframe.min.js',
+      cdn: 'https://aframe.io/releases/1.4.2/aframe.min.js',
+      ok: () => !!window.AFRAME
+    },
+    {
+      name: 'MindAR (núcleo)',
+      local: 'libs/mindar-image.prod.js',
+      cdn: 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image.prod.js',
+      ok: () => true
+    },
+    {
+      name: 'MindAR (A-Frame)',
+      local: 'libs/mindar-image-aframe.prod.js',
+      cdn: 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js',
+      ok: () => !!(window.AFRAME && AFRAME.components && AFRAME.components['mindar-image'])
+    }
+  ];
+
+  class FriendlyError extends Error {
+    constructor(title, message, detail) {
+      super(title);
+      this.title = title;
+      this.userMessage = message;
+      this.detail = detail || '';
+    }
+  }
+
+  /* Añade ?v=versión a los archivos propios para evitar cachés antiguas */
+  function asset(path) {
+    if (/^(data:|blob:)/.test(path)) return path;
+    try {
+      const u = new URL(path, location.href);
+      if (u.origin === location.origin) u.searchParams.set('v', CONFIG.appVersion);
+      return u.href;
+    } catch (e) {
+      return path;
+    }
+  }
+
+  const safeUrl = (u) => /^https?:\/\//i.test(u || '');
+
+  /* =====================================================================
+     Interfaz
+     ===================================================================== */
+  const UI = {
+    initTexts() {
+      $('#ui-title').textContent = T.title;
+      $('#ui-subtitle').textContent = T.subtitle;
+      $('#ui-note').textContent = T.note;
+      $('#ui-steps').replaceChildren(...T.steps.map((s) => {
+        const li = document.createElement('li');
+        li.textContent = s;
+        return li;
+      }));
+      $('#btn-start').textContent = T.loadingLibs;
+      $('#btn-exit').textContent = T.exit;
+      $('#btn-sound').textContent = T.enableSound;
+      $('#btn-retry').textContent = T.retry;
+      document.title = T.title + ' · Realidad aumentada';
+    },
+    landing(on) { $('#landing').hidden = !on; },
+    landingWarn(text) { const el = $('#ui-warn'); el.textContent = text; el.hidden = !text; },
+    landingError(text) { const el = $('#ui-err'); el.textContent = text; el.hidden = !text; },
+    startEnabled(on, label) {
+      const b = $('#btn-start');
+      b.disabled = !on;
+      b.textContent = label;
+    },
+    hud(on) { $('#hud').hidden = !on; },
+    status(text) { const s = $('#status'); s.textContent = text || ''; s.hidden = !text; },
+    reticle(on) { $('#reticle').hidden = !on; },
+    loading(on) { $('#spinner').hidden = !on; },
+    soundButton(on) { $('#btn-sound').hidden = !on; },
+    playButton(label) {
+      const b = $('#btn-play');
+      b.hidden = !label;
+      if (label) b.textContent = label;
+    },
+    showCard(card) {
+      $('#card-name').textContent = card.name || '';
+      const cap = $('#card-caption');
+      cap.textContent = card.caption || '';
+      cap.hidden = !card.caption;
+      const link = $('#card-link');
+      if (card.link && safeUrl(card.link.url)) {
+        link.href = card.link.url;
+        link.textContent = card.link.label || card.link.url;
+        link.hidden = false;
+      } else {
+        link.hidden = true;
+      }
+      $('#card-info').hidden = !(card.name || card.caption || !link.hidden);
+    },
+    hideCard() { $('#card-info').hidden = true; },
+    fatal(err, canRetry = true) {
+      $('#fatal-title').textContent = err.title || 'Algo ha fallado';
+      $('#fatal-msg').textContent = err.userMessage || '';
+      $('#fatal-detail').textContent = err.detail || '';
+      $('#btn-retry').hidden = !canRetry;
+      $('#fatal').hidden = false;
+    },
+    hideFatal() { $('#fatal').hidden = true; }
+  };
+
+  /* =====================================================================
+     Reproductor de vídeo compartido
+     Un solo <video> para todos los cromos: se desbloquea una vez en el
+     toque inicial y solo se descarga el vídeo del cromo que se está viendo.
+     ===================================================================== */
+  const Player = {
+    el: null,
+    current: null,      // id del cromo cuyo vídeo está cargado
+    view: null,         // cromo activo
+    muted: false,
+
+    init() {
+      const v = this.el = $('#arVideo');
+      v.addEventListener('loadedmetadata', () => {
+        if (!this.view || !v.videoWidth) return;
+        const s = surfaceOf(this.view);
+        if (s && !this.view.card.aspect) s.setAspect(v.videoWidth / v.videoHeight);
       });
-
-      target0.addEventListener('targetFound', () => {
-        video1.play();
+      v.addEventListener('playing', () => {
+        const s = this.view && surfaceOf(this.view);
+        if (s) s.setReady(true);
+        UI.loading(false);
+        UI.playButton(null);
       });
-
-      target0.addEventListener('targetLost', () => {
-        video1.pause();
+      v.addEventListener('waiting', () => { if (this.current) UI.loading(true); });
+      v.addEventListener('ended', () => {
+        if (this.current && !v.loop) UI.playButton(T.replay);
       });
-    </script>
-  </body>
+      v.addEventListener('error', () => {
+        if (!this.current) return;
+        log('Error de vídeo', v.error);
+        UI.loading(false);
+        UI.status(T.videoError);
+      });
+      $('#btn-sound').addEventListener('click', () => {
+        this.muted = false;
+        v.muted = false;
+        UI.soundButton(false);
+      });
+      $('#btn-play').addEventListener('click', () => {
+        if (v.ended) v.currentTime = 0;
+        UI.playButton(null);
+        this.tryPlay();
+      });
+    },
+
+    /* Se llama dentro del toque en “Empezar” */
+    prime() {
+      const v = this.el;
+      this.current = null;
+      this.view = null;
+      this.muted = false;
+      v.muted = false;
+      v.loop = false;
+      v.src = SILENT_WAV;
+      const p = v.play();
+      if (p && p.catch) p.catch((e) => log('prime rechazado', e && e.name));
+    },
+
+    async start(view) {
+      const v = this.el;
+      const card = view.card;
+      this.view = view;
+      UI.playButton(null);
+      UI.status('');
+      const surface = surfaceOf(view);
+
+      if (this.current !== card.id) {
+        if (surface) {
+          surface.setReady(false);
+          surface.setAspect(card.aspect || 16 / 9);
+        }
+        UI.loading(true);
+        v.pause();
+        v.src = asset(card.src);
+        this.current = card.id;
+      } else {
+        if (v.ended) v.currentTime = 0;
+        if (surface && v.readyState >= 2) surface.setReady(true);
+      }
+      v.loop = !!card.loop;
+      v.muted = this.muted;
+      await this.tryPlay();
+    },
+
+    async tryPlay() {
+      const v = this.el;
+      try {
+        await v.play();
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;           // lo interrumpió otro cromo
+        if (err && err.name === 'NotAllowedError') {
+          // El navegador no deja reproducir con sonido: se reproduce sin sonido
+          this.muted = true;
+          v.muted = true;
+          UI.soundButton(true);
+          try {
+            await v.play();
+          } catch (e2) {
+            if (!e2 || e2.name !== 'AbortError') UI.playButton(T.play);
+          }
+        } else {
+          log('play() falló', err);
+        }
+      }
+    },
+
+    pause() {
+      if (this.current) this.el.pause();
+    },
+
+    reset() {
+      const v = this.el;
+      v.pause();
+      v.removeAttribute('src');
+      v.load();
+      this.current = null;
+      this.view = null;
+      UI.soundButton(false);
+      UI.playButton(null);
+      UI.loading(false);
+    }
+  };
+
+  /* =====================================================================
+     Tipos de contenido
+     Para añadir un tipo nuevo (por ejemplo “audio” o “texto”), basta con
+     añadir una entrada aquí con build / found / lost.
+     ===================================================================== */
+  const surfaceOf = (view) => view.el.components && view.el.components['ar-video-surface'];
+
+  const makeWrapper = (card) => {
+    const el = document.createElement('a-entity');
+    el.setAttribute('position', card.position.join(' '));
+    el.setAttribute('rotation', card.rotation.join(' '));
+    return el;
+  };
+
+  const RENDERERS = {
+    video: {
+      build(card) {
+        const el = makeWrapper(card);
+        el.setAttribute('ar-video-surface', {
+          scale: card.scale,
+          aspect: card.aspect || 16 / 9,
+          transparent: !!card.transparent
+        });
+        return { el };
+      },
+      found(view) { Player.start(view); },
+      lost() { Player.pause(); }
+    },
+
+    image: {
+      build(card) {
+        const el = makeWrapper(card);
+        const img = document.createElement('a-image');
+        const w = card.scale;
+        img.setAttribute('src', asset(card.src));
+        img.setAttribute('width', w);
+        img.setAttribute('height', w / (card.aspect || 1));
+        img.addEventListener('materialtextureloaded', (e) => {
+          const im = e.detail && e.detail.texture && e.detail.texture.image;
+          if (im && im.width && im.height && !card.aspect) {
+            img.setAttribute('height', w * im.height / im.width);
+          }
+        });
+        el.appendChild(img);
+        return { el };
+      }
+    },
+
+    model: {
+      build(card) {
+        const el = makeWrapper(card);
+        const model = document.createElement('a-entity');
+        model.setAttribute('gltf-model', asset(card.src));
+        model.setAttribute('scale', `${card.scale} ${card.scale} ${card.scale}`);
+        model.setAttribute('ar-anim', { clip: card.clip || '' });
+        el.appendChild(model);
+        return { el, model };
+      },
+      found(view) {
+        const a = view.model && view.model.components && view.model.components['ar-anim'];
+        if (a) a.setPlaying(true);
+      },
+      lost(view) {
+        const a = view.model && view.model.components && view.model.components['ar-anim'];
+        if (a) a.setPlaying(false);
+      }
+    }
+  };
+
+  /* Componentes de A-Frame (se registran cuando A-Frame ya está cargado) */
+  function registerComponents() {
+    const THREE = AFRAME.THREE;
+
+    /* Plano con textura de vídeo (el vídeo es el reproductor compartido) */
+    AFRAME.registerComponent('ar-video-surface', {
+      schema: {
+        scale: { type: 'number', default: 1 },
+        aspect: { type: 'number', default: 16 / 9 },
+        transparent: { type: 'boolean', default: false }
+      },
+      init() {
+        const video = document.getElementById('arVideo');
+        this.texture = new THREE.VideoTexture(video);
+        if (THREE.SRGBColorSpace) this.texture.colorSpace = THREE.SRGBColorSpace;
+        else if (THREE.sRGBEncoding) this.texture.encoding = THREE.sRGBEncoding;
+        this.texture.minFilter = THREE.LinearFilter;
+        this.texture.generateMipmaps = false;
+        this.material = new THREE.MeshBasicMaterial({
+          map: this.texture,
+          transparent: this.data.transparent,
+          toneMapped: false,
+          side: THREE.DoubleSide
+        });
+        this.geometry = new THREE.PlaneGeometry(1, 1);
+        this.mesh = new THREE.Mesh(this.geometry, this.material);
+        this.mesh.visible = false;
+        this.aspect = this.data.aspect;
+        this.el.setObject3D('mesh', this.mesh);
+        this.apply();
+      },
+      apply() {
+        const s = this.data.scale;
+        this.mesh.scale.set(s, s / this.aspect, 1);
+      },
+      setAspect(a) {
+        if (a && isFinite(a)) { this.aspect = a; this.apply(); }
+      },
+      setReady(on) { this.mesh.visible = !!on; },
+      remove() {
+        this.el.removeObject3D('mesh');
+        this.texture.dispose();
+        this.material.dispose();
+        this.geometry.dispose();
+      }
+    });
+
+    /* Reproduce las animaciones incluidas en un modelo .glb */
+    AFRAME.registerComponent('ar-anim', {
+      schema: { clip: { type: 'string', default: '' } },
+      init() {
+        this.mixer = null;
+        this.playing = true;
+        this.el.addEventListener('model-loaded', (e) => {
+          const model = e.detail && e.detail.model;
+          const clips = (model && model.animations) || [];
+          if (!clips.length) return;
+          this.mixer = new THREE.AnimationMixer(model);
+          const chosen = this.data.clip ? clips.filter((c) => c.name === this.data.clip) : clips;
+          chosen.forEach((c) => this.mixer.clipAction(c).play());
+        });
+      },
+      setPlaying(on) { this.playing = !!on; },
+      tick(time, delta) {
+        if (this.mixer && this.playing) this.mixer.update(delta / 1000);
+      },
+      remove() { if (this.mixer) this.mixer.stopAllAction(); }
+    });
+  }
+
+  /* =====================================================================
+     Configuración: comprobación y valores por defecto
+     ===================================================================== */
+  const DEFAULTS = {
+    type: 'video', scale: 1, position: [0, 0, 0], rotation: [0, 0, 0],
+    loop: false, aspect: null, transparent: false, caption: '', link: null
+  };
+
+  function normalizeCards() {
+    const seen = new Set();
+    if (!Array.isArray(CONFIG.cards) || !CONFIG.cards.length) {
+      throw new FriendlyError(T.errConfigTitle, 'No hay ningún cromo en la lista “cards”.');
+    }
+    return CONFIG.cards.map((c, i) => {
+      const card = Object.assign({}, DEFAULTS, c);
+      card.id = card.id || ('cromo-' + (i + 1));
+      card.targetIndex = Number.isInteger(c.targetIndex) ? c.targetIndex : i;
+      if (!RENDERERS[card.type]) {
+        throw new FriendlyError(T.errConfigTitle, `El cromo “${card.id}” tiene un tipo desconocido: “${card.type}”.`);
+      }
+      if (!card.src) {
+        throw new FriendlyError(T.errConfigTitle, `Al cromo “${card.id}” le falta el archivo (src).`);
+      }
+      if (seen.has(card.targetIndex)) {
+        throw new FriendlyError(T.errConfigTitle, `Dos cromos usan el mismo número de foto (${card.targetIndex}).`);
+      }
+      seen.add(card.targetIndex);
+      return card;
+    });
+  }
+
+  /* =====================================================================
+     Carga de bibliotecas
+     ===================================================================== */
+  const loadScript = (src) => new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = false;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('No se pudo cargar ' + src));
+    document.head.appendChild(s);
+  });
+
+  async function loadLib(lib) {
+    try {
+      await loadScript(lib.local);
+      if (lib.ok()) { log(lib.name, 'cargada en local'); return; }
+    } catch (e) {
+      log(lib.name, 'sin copia local, se usa la CDN');
+    }
+    await loadScript(lib.cdn);
+    if (!lib.ok()) throw new Error(lib.name + ' no se inicializó');
+    log(lib.name, 'cargada desde la CDN');
+  }
+
+  async function loadLibraries() {
+    for (const lib of LIBS) await loadLib(lib);
+  }
+
+  /* =====================================================================
+     Experiencia AR
+     ===================================================================== */
+  const State = { cards: [], scene: null, active: null, running: false, wakeLock: null };
+
+  function onFound(view) {
+    if (State.active && State.active !== view) onLost(State.active);
+    State.active = view;
+    log('encontrado', view.card.id);
+    UI.status('');
+    UI.reticle(false);
+    UI.showCard(view.card);
+    const r = RENDERERS[view.card.type];
+    if (r.found) r.found(view);
+  }
+
+  function onLost(view) {
+    if (State.active !== view) return;
+    log('perdido', view.card.id);
+    const r = RENDERERS[view.card.type];
+    if (r.lost) r.lost(view);
+    State.active = null;
+    UI.hideCard();
+    UI.loading(false);
+    UI.reticle(true);
+    UI.status(T.scanning);
+  }
+
+  function buildScene() {
+    const stage = $('#stage');
+    const t = CONFIG.tracking;
+    const scene = document.createElement('a-scene');
+
+    scene.setAttribute('embedded', '');
+    scene.setAttribute('vr-mode-ui', 'enabled: false');
+    scene.setAttribute('device-orientation-permission-ui', 'enabled: false');
+    scene.setAttribute('loading-screen', 'enabled: false');
+    scene.setAttribute('color-space', 'sRGB');
+    scene.setAttribute('renderer', 'colorManagement: true, physicallyCorrectLights');
+    scene.setAttribute('mindar-image', {
+      imageTargetSrc: asset(CONFIG.targetsFile),
+      maxTrack: t.maxTrack,
+      warmupTolerance: t.warmupTolerance,
+      missTolerance: t.missTolerance,
+      filterMinCF: t.filterMinCF,
+      filterBeta: t.filterBeta,
+      uiLoading: 'no',
+      uiScanning: 'no',
+      uiError: 'no',
+      showStats: DEBUG
+    });
+
+    const camera = document.createElement('a-camera');
+    camera.setAttribute('position', '0 0 0');
+    camera.setAttribute('look-controls', 'enabled: false');
+    camera.setAttribute('wasd-controls', 'enabled: false');
+    scene.appendChild(camera);
+
+    State.cards.forEach((card) => {
+      const target = document.createElement('a-entity');
+      target.setAttribute('mindar-image-target', { targetIndex: card.targetIndex });
+      const built = RENDERERS[card.type].build(card);
+      const view = Object.assign({ card, target }, built);
+      target.appendChild(built.el);
+      target.addEventListener('targetFound', () => onFound(view));
+      target.addEventListener('targetLost', () => onLost(view));
+      scene.appendChild(target);
+    });
+
+    scene.addEventListener('arReady', () => {
+      log('MindAR listo');
+      UI.loading(false);
+      UI.reticle(true);
+      UI.status(T.scanning);
+    });
+    scene.addEventListener('arError', (e) => {
+      const original = e && e.detail && e.detail.error;
+      log('arError', original);
+      stopExperience();
+      UI.fatal(new FriendlyError(
+        T.errCameraTitle, T.errCameraMsg,
+        original ? String(original.name || original.message || original) : ''
+      ));
+    });
+
+    State.scene = scene;
+    stage.appendChild(scene);
+  }
+
+  async function preflight() {
+    let ok = false;
+    try {
+      const res = await fetch(asset(CONFIG.targetsFile), { method: 'HEAD', cache: 'no-cache' });
+      ok = res.ok;
+    } catch (e) {
+      ok = false;
+    }
+    if (!ok) throw new FriendlyError(T.errTargetsTitle, T.errTargetsMsg, CONFIG.targetsFile);
+  }
+
+  async function lockScreen() {
+    try {
+      if ('wakeLock' in navigator) State.wakeLock = await navigator.wakeLock.request('screen');
+    } catch (e) { log('wakeLock no disponible'); }
+  }
+  function unlockScreen() {
+    try { if (State.wakeLock) State.wakeLock.release(); } catch (e) { /* nada */ }
+    State.wakeLock = null;
+  }
+
+  async function startExperience() {
+    if (State.running) return;
+    State.running = true;
+    Player.prime();                       // debe ejecutarse dentro del toque del usuario
+    UI.startEnabled(false, T.startingCamera);
+    try {
+      await preflight();
+      UI.landing(false);
+      $('#stage').hidden = false;
+      UI.hud(true);
+      UI.reticle(false);
+      UI.status(T.startingCamera);
+      UI.loading(true);
+      buildScene();
+      lockScreen();
+    } catch (err) {
+      stopExperience();
+      UI.fatal(err instanceof FriendlyError ? err : new FriendlyError('Algo ha fallado', String(err && err.message || err)));
+    }
+  }
+
+  function stopExperience() {
+    Player.reset();
+    try {
+      const sys = State.scene && State.scene.systems && State.scene.systems['mindar-image-system'];
+      if (sys) sys.stop();
+    } catch (e) { log('stop()', e); }
+    try { if (State.scene) State.scene.remove(); } catch (e) { /* nada */ }
+    $('#stage').replaceChildren();
+    $('#stage').hidden = true;
+    UI.hud(false);
+    UI.hideCard();
+    UI.status('');
+    UI.loading(false);
+    State.scene = null;
+    State.active = null;
+    State.running = false;
+    unlockScreen();
+    UI.startEnabled(true, T.start);
+  }
+
+  function backToLanding() {
+    stopExperience();
+    UI.hideFatal();
+    UI.landing(true);
+  }
+
+  /* =====================================================================
+     Arranque
+     ===================================================================== */
+  const IN_APP = /FBAN|FBAV|Instagram|Snapchat|TikTok|MicroMessenger|Line\/|; wv\)/i.test(navigator.userAgent);
+
+  async function boot() {
+    UI.initTexts();
+    Player.init();
+
+    $('#btn-start').addEventListener('click', startExperience);
+    $('#btn-exit').addEventListener('click', backToLanding);
+    $('#btn-retry').addEventListener('click', backToLanding);
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        Player.pause();
+        unlockScreen();
+      } else if (State.running) {
+        lockScreen();
+        if (State.active) RENDERERS[State.active.card.type].found?.(State.active);
+      }
+    });
+
+    if (IN_APP) UI.landingWarn(T.warnInApp);
+
+    if (!window.isSecureContext || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+      UI.landingError(T.errNoCameraApi);
+      UI.startEnabled(false, T.start);
+      return;
+    }
+
+    try {
+      State.cards = normalizeCards();
+    } catch (err) {
+      UI.landing(false);
+      UI.fatal(err, false);
+      return;
+    }
+
+    try {
+      await loadLibraries();
+      registerComponents();
+      UI.startEnabled(true, T.start);
+    } catch (err) {
+      log(err);
+      UI.landingError(T.errLibs);
+      UI.startEnabled(false, T.start);
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
 </html>
