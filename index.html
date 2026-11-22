@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Álbum de Cromos AR</title>
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <style>
+      body { margin: 0; overflow: hidden; font-family: sans-serif; }
+      #start-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+        color: white; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; z-index: 999;
+        text-align: center; padding: 20px;
+      }
+      button {
+        padding: 14px 28px; font-size: 18px; border-radius: 30px;
+        border: none; background: #ff4d6d; color: white; cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Pantalla inicial obligatoria para que iOS/Android permitan reproducir vídeo con sonido -->
+    <div id="start-overlay">
+      <h2>Apunta con la cámara a un cromo</h2>
+      <button id="start-btn">Empezar</button>
+    </div>
+
+    <a-scene
+      mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
+      color-space="sRGB"
+      renderer="colorManagement: true, physicallyCorrectLights"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false">
+
+      <a-assets>
+        <video id="cromo-video-1" src="./video.mp4" preload="auto" loop="true" playsinline webkit-playsinline crossorigin="anonymous"></video>
+      </a-assets>
+
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <!-- Cromo 0 (el primero de tu targets.mind) -->
+      <a-entity id="target-0" mindar-image-target="targetIndex: 0">
+        <!-- Ajusta height según la proporción de tu foto (ej. 0.75 para 4:3, 1.33 para vertical) -->
+        <a-video src="#cromo-video-1" position="0 0 0" width="1" height="0.75"></a-video>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      const startBtn = document.getElementById('start-btn');
+      const overlay = document.getElementById('start-overlay');
+      const sceneEl = document.querySelector('a-scene');
+      const target0 = document.getElementById('target-0');
+      const video1 = document.getElementById('cromo-video-1');
+
+      startBtn.addEventListener('click', () => {
+        overlay.style.display = 'none';
+        // Pre-activamos el vídeo tras el toque del usuario
+        video1.play().then(() => { video1.pause(); video1.currentTime = 0; });
+        sceneEl.systems['mindar-image-system'].start();
+      });
+
+      target0.addEventListener('targetFound', () => {
+        video1.play();
+      });
+
+      target0.addEventListener('targetLost', () => {
+        video1.pause();
+      });
+    </script>
+  </body>
+</html>
